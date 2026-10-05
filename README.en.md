@@ -1,4 +1,4 @@
-# OBS Live Bilingual Captions (Live Caption for OBS)
+# Mizuki Aiga - OBS Live Bilingual Captions (Live Caption for OBS)
 
 [繁體中文](README.md) | [English](README.en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [한국어](README.ko.md)
 
@@ -6,27 +6,58 @@ A real-time speech recognition and bilingual translation live caption tool speci
 
 ---
 
+## 📖 Project Origin & Naming
+
+This project was originally built for a collaborative livestream with **Aiga Mizuki (藍芽水月)** to provide lightning-fast speech recognition and synchronized bilingual subtitles in OBS Studio, and was subsequently branched and refined from that production workflow. In honor of that collaboration, the project is officially named **Mizuki Aiga**.
+
+---
+
+## 🧩 Subsystem Architecture
+
+The system consists of several modular and independent subsystems operating in sync:
+
+1. **🎙️ Web Control Panel (`/`)**
+   - Captures streamer microphone input and performs continuous speech-to-text via Google Web Speech API.
+   - Features smart sentence boundary settlement, real-time volume VU meter, microphone device switching, and digital gain control.
+   - Provides seamless 5-language UI switching (繁中, 日本語, English, 简体中文, 한국어) and automated Google Chrome environment detection (alert warning on non-Chrome browsers).
+   - Includes quick template broadcasting buttons and transcription history export (TXT).
+
+2. **📺 OBS Overlay Browser Source (`/overlay.html`)**
+   - Pure rendering canvas dedicated to OBS Studio's "Browser Source".
+   - Features **100% native Alpha transparency**, delivering crisp text outlines without green screen bleed or chroma key tuning.
+   - Real-time 0-latency synchronization with the Control Panel via WebSocket and BroadcastChannel.
+   - Full URL query parameter customizability (font size, alignment, display mode, auto-hide timer, etc.).
+
+3. **🟢 Chroma Key Fullscreen Green Stage (`?bg=green`)**
+   - Tailored for streamers who prefer "Window Capture" on a secondary monitor.
+   - **Strict 16:9 Standard Ratio Lock**: Preserves aspect ratio on any display (e.g., MacBook 16:10) to perfectly fit OBS 16:9 canvas without distortion.
+   - Supports **Pure Green Mode** (shortcut: `H` or `Esc`) with auto-hiding controls when idle for ultra-clean window capture.
+
+4. **🌐 Multi-Engine Translation Service (`/api/translate`)**
+   - **Chrome On-Device AI Translation**: Uses Chrome built-in Translation API for offline, sub-50ms instant translation.
+   - **Cloud Multi-Engine Failover**: Combines server in-memory caching with Google GTX and MyMemory fallback to guarantee unbroken translation during network spikes.
+
+5. **🎬 Live Particle & Visual FX System (`effects.js`)**
+   - Built-in physics particle engine supporting 6 large-scale stream effects (Fireworks 🎆, Glass Shatter 💥, Flower Bouquet 💐, Party Confetti 🎉, Floating Hearts 💖, Lightning Strike ⚡).
+   - Automatically scales particle size, speed, and count proportionally for 1080p and 4K outputs.
+   - Supports custom streamer avatar upload with dynamic speaking pulse animation.
+
+---
+
 ## ✨ Features
 
-- 🎙️ **Real-time Continuous Speech-to-Text**: Powered by the Web Speech API with rapid typing preview and automatic smart clause segmentation.
-- 🌐 **Synchronized Bilingual Subtitles**: Displays "Original Speech" on top and "Translated Captions" below, perfectly bridging communication with international audiences.
+- 🎙️ **Real-time Continuous Speech-to-Text**: Fast typing preview and automatic smart clause segmentation.
+- 🌐 **Synchronized Bilingual Subtitles**: Displays original speech on top and translated captions below.
 - 🟢 **Chroma Key Green Screen & Locked 16:9 Aspect Ratio**:
-  - **Strict 16:9 Standard Ratio**: The live green stage preview and fullscreen mode are permanently locked to 16:9 (1920×1080), maintaining aspect ratio regardless of window size or screen aspect ratio (e.g., MacBook 16:10).
-  - **Pure Green Screen Mode** (Shortcut: `H` or `Esc`): Instantly hides navbar, sidebar controls, and buttons, turning the entire browser window into a clean green screen with live subtitles. Controls auto-hide when idle.
-  - Supports Pure Chroma Green (`#00FF00`), Broadcast Green (`#00B140`), Chroma Blue (`#0000FF`), Dark background (`#0F172A`), and transparent background.
-  - Dedicated OBS Browser Source Overlay (`overlay.html`) natively supports pure 100% alpha transparency.
-- ⚡ **Zero-Latency WebSocket & BroadcastChannel Streaming**: Speak into your microphone in Google Chrome, and subtitles appear on OBS in real time with zero delay.
-- 🎨 **Deep Customization**:
-  - Outline shadow strength (None, Subtle, Thick, Strong) for maximum contrast against bright game scenes.
-  - Font sizes (Small, Medium, Large, Extra Large).
-  - Horizontal alignment (Center, Left, Right) and vertical position (Bottom, Center, Top).
-  - Customizable text colors for original and translated text (defaults to high-contrast white + vivid yellow).
-  - Auto-hide timer when silent (3s, 5s, 8s, or never).
-- 👤 **Custom Streamer Avatar & Speaking Pulse**: Upload custom avatar or PNG images to display before subtitles; supports circular, rounded, and square frames with dynamic speaking pulse glow animation.
-- 🎬 **Resolution-Adaptive Live Stage Visual Effects**: Trigger vibrant particle effects (Fireworks 🎆, Glass Shatter 💥, Flower Bouquet 💐, Confetti Party 🎉, Floating Hearts 💖, Lightning Strike ⚡) scaled proportionally for 1080p and 4K stream outputs.
-- 🔄 **Multi-Engine Translation Support**: Server cache with automatic fallback, Chrome on-device AI Translation API (zero latency, offline), Google GTX, and MyMemory.
-- 🌍 **Full Multi-Language UI (i18n)**: One-click instant switching between Traditional Chinese, Simplified Chinese, English, Japanese, and Korean.
-- 📜 **Transcription History & Export**: Live transcription logs of original and translated text with one-click TXT export.
+  - Strict 16:9 standard ratio lock (1920×1080).
+  - Pure green screen mode (`H` or `Esc`).
+  - Supports Chroma Green (`#00FF00`), Broadcast Green (`#00B140`), Chroma Blue (`#0000FF`), Dark (`#0F172A`), and transparent background.
+- ⚡ **Zero-Latency WebSocket & BroadcastChannel Streaming**: Real-time sync from Chrome to OBS.
+- 🎨 **Deep Customization**: Stroke strength, font sizes, alignments, text colors, and auto-hide timer.
+- 👤 **Custom Streamer Avatar & Speaking Pulse**: Dynamic breathing pulse animation while speaking.
+- 🎬 **Resolution-Adaptive Stage Particle FX**: Dynamic visual effects for viewer engagement.
+- 🌍 **Full Multi-Language UI (i18n)**: One-click instant switching across 5 languages.
+- 📜 **Transcription History & Export**: Live logging with one-click TXT export.
 
 ---
 
@@ -90,6 +121,6 @@ When using the OBS Browser Source, you can customize the appearance directly via
 
 ## 💡 Important Notes
 
-1. **Browser Requirement**: Speech recognition relies on the Google Web Speech API. **The Control Panel (speaking end) must be opened in Google Chrome**.
+1. **Browser Requirement**: Speech recognition relies on the Google Web Speech API. **The Control Panel (speaking end) must be opened in Google Chrome** (the system includes automatic browser detection and alerts on non-Chrome browsers).
 2. **Microphone Permissions**: When launching for the first time, allow microphone access when prompted by the browser.
 3. Keep `npm start` running in the background while streaming.

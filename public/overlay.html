@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OBS 即時字幕 Overlay (雙語字幕)</title>
+  <style>
+    :root {
+      --chroma-green: #00FF00;
+      --broadcast-green: #00B140;
+      --chroma-blue: #0000FF;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      user-select: none;
+    }
+
+    /* Background Modes */
+    body.bg-transparent {
+      background-color: transparent !important;
+    }
+
+    body.bg-green {
+      background-color: var(--chroma-green) !important;
+    }
+
+    body.bg-broadcast {
+      background-color: var(--broadcast-green) !important;
+    }
+
+    body.bg-blue {
+      background-color: var(--chroma-blue) !important;
+    }
+
+    body.bg-dark {
+      background-color: #0f172a !important;
+    }
+
+    /* Overlay Container */
+    #overlay-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 40px 60px;
+      transition: all 0.3s ease;
+    }
+
+    /* Vertical Position */
+    #overlay-container.pos-bottom {
+      justify-content: flex-end;
+    }
+
+    #overlay-container.pos-center {
+      justify-content: center;
+    }
+
+    #overlay-container.pos-top {
+      justify-content: flex-start;
+    }
+
+    /* Horizontal Alignment */
+    .align-center {
+      align-items: center;
+      text-align: center;
+    }
+
+    .align-left {
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    .align-right {
+      align-items: flex-end;
+      text-align: right;
+    }
+
+    /* Subtitle Box & Animation */
+    .subtitle-box {
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 16px;
+      max-width: 95%;
+      word-break: break-word;
+      transition: opacity 0.35s ease, transform 0.35s ease;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Subtitle box with Avatar pinned at far left */
+    .subtitle-box.has-avatar-left {
+      width: 100% !important;
+      max-width: 100% !important;
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: flex-end !important;
+      justify-content: space-between !important;
+      gap: 24px !important;
+    }
+
+    .subtitle-box.has-avatar-left .avatar-container {
+      flex-shrink: 0 !important;
+      align-self: flex-end !important;
+    }
+
+    .subtitle-box.has-avatar-left .subtitle-text-group {
+      flex: 1 !important;
+      min-width: 0 !important;
+      align-self: flex-end !important;
+      margin-bottom: 14px;
+    }
+
+    .avatar-spacer {
+      display: none;
+      flex-shrink: 0;
+      visibility: hidden;
+      pointer-events: none;
+      align-self: flex-end !important;
+    }
+
+    .pos-top .subtitle-box.has-avatar-left {
+      align-items: flex-start !important;
+    }
+    .pos-top .subtitle-box.has-avatar-left .avatar-container,
+    .pos-top .subtitle-box.has-avatar-left .avatar-spacer {
+      align-self: flex-start !important;
+    }
+    .pos-top .subtitle-box.has-avatar-left .subtitle-text-group {
+      align-self: flex-start !important;
+      margin-top: 14px;
+      margin-bottom: 0;
+    }
+
+    .pos-center .subtitle-box.has-avatar-left {
+      align-items: center !important;
+    }
+    .pos-center .subtitle-box.has-avatar-left .avatar-container,
+    .pos-center .subtitle-box.has-avatar-left .avatar-spacer {
+      align-self: center !important;
+    }
+    .pos-center .subtitle-box.has-avatar-left .subtitle-text-group {
+      align-self: center !important;
+      margin-bottom: 0;
+    }
+
+    .pos-bottom .subtitle-box:not(.has-avatar-left) {
+      align-items: flex-end !important;
+    }
+    .pos-bottom .subtitle-box:not(.has-avatar-left) .avatar-container {
+      align-self: flex-end !important;
+    }
+    .pos-bottom .subtitle-box:not(.has-avatar-left) .subtitle-text-group {
+      align-self: flex-end !important;
+      margin-bottom: 14px;
+    }
+
+    .align-center .subtitle-box.has-avatar-left .avatar-spacer {
+      display: block;
+    }
+
+    .align-left .subtitle-box.has-avatar-left .avatar-spacer,
+    .align-right .subtitle-box.has-avatar-left .avatar-spacer {
+      display: none !important;
+    }
+
+    .subtitle-text-group {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      flex: 1;
+    }
+
+    /* Avatar Display */
+    .avatar-container {
+      display: none;
+      flex-shrink: 0 !important;
+      position: relative;
+    }
+
+    .avatar-container.active {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0 !important;
+    }
+
+    .avatar-img {
+      width: 138px;
+      height: 138px;
+      object-fit: cover;
+      flex-shrink: 0 !important;
+      aspect-ratio: 1 / 1 !important;
+      border: 6px solid #ffffff;
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.85), 0 6px 18px rgba(0, 0, 0, 0.9);
+      background: #1e293b;
+      transition: border-color 0.2s ease;
+    }
+
+    .avatar-shape-circle .avatar-img { border-radius: 50%; }
+    .avatar-shape-rounded .avatar-img { border-radius: 20px; }
+    .avatar-shape-square .avatar-img { border-radius: 8px; }
+
+    /* Avatar Sizes: Enlarged presets (80px, 108px, 138px, 168px) */
+    .avatar-size-small .avatar-img { width: 80px; height: 80px; }
+    .avatar-size-medium .avatar-img { width: 108px; height: 108px; }
+    .avatar-size-large .avatar-img { width: 138px; height: 138px; }
+    .avatar-size-huge .avatar-img { width: 168px; height: 168px; }
+
+    /* Border Thickness Presets */
+    .avatar-border-medium .avatar-img { border-width: 4px; }
+    .avatar-border-thick .avatar-img { border-width: 6px; }
+    .avatar-border-extra .avatar-img { border-width: 8px; }
+
+    /* Avatar Display - Rock-solid, flicker-free */
+    .avatar-container,
+    .avatar-img {
+      animation: none !important;
+      opacity: 1 !important;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      transform: translateZ(0);
+    }
+
+    .subtitle-box.hidden {
+      pointer-events: none;
+    }
+
+    .subtitle-box.hidden .subtitle-text-group {
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .subtitle-box.hidden.style-bubble,
+    .subtitle-box.hidden.style-solid-black {
+      background: transparent !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+    }
+
+    .subtitle-box:not(.has-avatar-left).hidden .avatar-container {
+      opacity: 0 !important;
+      transition: opacity 0.2s ease;
+    }
+
+    /* Optional Bubble / Background */
+    .subtitle-box.style-bubble {
+      background: rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(8px);
+      padding: 16px 28px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    }
+
+    .subtitle-box.style-solid-black {
+      background: #000000;
+      padding: 14px 24px;
+      border-radius: 10px;
+    }
+
+    /* Original (Top) & Translation (Bottom) Lines - Strictly Max 2 Lines */
+    .subtitle-original {
+      font-weight: 800;
+      color: #FFFFFF;
+      line-height: 1.35;
+      letter-spacing: 0.03em;
+      transition: color 0.2s;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: break-all;
+      max-width: 100%;
+    }
+
+    .subtitle-translation {
+      font-weight: 800;
+      color: #FFEE55;
+      line-height: 1.35;
+      letter-spacing: 0.03em;
+      margin-top: 6px;
+      transition: color 0.2s;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: break-all;
+      max-width: 100%;
+    }
+
+    /* Subtitle Text animation when new sentence appears (text only, avatar excluded) */
+    .subtitle-text-group.sentence-pop {
+      animation: sentence-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes sentence-pop {
+      0% { opacity: 0.35; transform: translateY(4px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    /* When single language mode, allow up to 2 lines max */
+    #overlay-container.mode-single .subtitle-original,
+    #overlay-container.mode-single .subtitle-translation {
+      -webkit-line-clamp: 2 !important;
+    }
+
+    /* High Visibility Stroke & Text Shadows for OBS */
+    .text-stroke-strong {
+      text-shadow:
+        -2px -2px 0 #000,
+         2px -2px 0 #000,
+        -2px  2px 0 #000,
+         2px  2px 0 #000,
+        -3px  0px 0 #000,
+         3px  0px 0 #000,
+         0px -3px 0 #000,
+         0px  3px 0 #000,
+         0px  4px 12px rgba(0, 0, 0, 0.95);
+      -webkit-text-stroke: 1.2px rgba(0, 0, 0, 0.75);
+    }
+
+    .text-stroke-thick {
+      text-shadow:
+        -3px -3px 0 #000,
+         3px -3px 0 #000,
+        -3px  3px 0 #000,
+         3px  3px 0 #000,
+        -4px  0px 0 #000,
+         4px  0px 0 #000,
+         0px -4px 0 #000,
+         0px  4px 0 #000,
+         0 6px 16px rgba(0, 0, 0, 1);
+      -webkit-text-stroke: 2px #000;
+    }
+
+    .text-stroke-subtle {
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9), 0 0 4px #000;
+    }
+
+    .text-stroke-none {
+      text-shadow: none;
+      -webkit-text-stroke: 0;
+    }
+
+    /* Sizes */
+    .size-small .subtitle-original { font-size: 1.5rem; }
+    .size-small .subtitle-translation { font-size: 1.35rem; }
+
+    .size-medium .subtitle-original { font-size: 2rem; }
+    .size-medium .subtitle-translation { font-size: 1.8rem; }
+
+    .size-large .subtitle-original { font-size: 2.7rem; }
+    .size-large .subtitle-translation { font-size: 2.4rem; }
+
+    .size-huge .subtitle-original { font-size: 3.5rem; }
+    .size-huge .subtitle-translation { font-size: 3.1rem; }
+
+    /* Interim / typing indicator (Streaming Subtitles) */
+    .interim {
+      opacity: 0.98;
+      font-style: normal;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 3px;
+      height: 1.05em;
+      background: #38bdf8;
+      margin-left: 3px;
+      vertical-align: -0.1em;
+      border-radius: 2px;
+      animation: blink 0.8s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    /* Live Stream Effects Canvas & Animations */
+    .effect-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 40;
+    }
+
+    .effect-shake {
+      animation: screen-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    @keyframes screen-shake {
+      10%, 90% { transform: translate3d(-4px, 0, 0); }
+      20%, 80% { transform: translate3d(6px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-8px, 0, 0); }
+      40%, 60% { transform: translate3d(8px, 0, 0); }
+    }
+
+    .effect-flash {
+      animation: screen-flash 0.25s ease-out;
+    }
+
+    @keyframes screen-flash {
+      0% { filter: brightness(2.6); }
+      100% { filter: brightness(1); }
+    }
+    /* Custom Banner & Marquee Layer for OBS Overlay */
+    .custom-banner-layer {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      pointer-events: none;
+      z-index: 35;
+      display: flex;
+      align-items: center;
+      transition: opacity 0.35s ease, transform 0.3s ease;
+      opacity: 1;
+    }
+
+    .custom-banner-layer.pos-top {
+      top: 40px;
+      bottom: auto;
+      justify-content: center;
+    }
+
+    .custom-banner-layer.pos-center {
+      top: 50%;
+      bottom: auto;
+      transform: translateY(-50%);
+      justify-content: center;
+    }
+
+    .custom-banner-layer.pos-bottom {
+      bottom: 40px;
+      top: auto;
+      justify-content: center;
+    }
+
+    .custom-banner-layer.fade-out {
+      opacity: 0;
+    }
+
+    /* Marquee Track & Content */
+    .marquee-track {
+      width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .marquee-content {
+      display: inline-block;
+      white-space: nowrap;
+      padding: 12px 36px;
+      border-radius: 999px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      will-change: transform;
+    }
+
+    @keyframes marquee-scroll {
+      0% {
+        transform: translateX(100%);
+      }
+      100% {
+        transform: translateX(-100%);
+      }
+    }
+
+    .marquee-content.loop-infinite {
+      animation: marquee-scroll linear infinite;
+    }
+
+    .marquee-content.loop-once {
+      animation: marquee-scroll linear 1 forwards;
+    }
+
+    .marquee-content.speed-slow {
+      animation-duration: 22s;
+    }
+
+    .marquee-content.speed-normal {
+      animation-duration: 14s;
+    }
+
+    .marquee-content.speed-fast {
+      animation-duration: 8s;
+    }
+
+    .marquee-content.speed-rapid {
+      animation-duration: 4.5s;
+    }
+
+    /* Static Banner */
+    .static-banner-content {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      max-width: 90%;
+      padding: 14px 40px;
+      border-radius: 18px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      word-break: break-word;
+      text-align: center;
+      animation: static-banner-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+    }
+
+    @keyframes static-banner-pop {
+      0% { transform: scale(0.88); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Font Sizes for OBS (Full 1080p/720p scaling) */
+    .banner-size-small {
+      font-size: 1.5rem;
+    }
+    .banner-size-medium {
+      font-size: 2.1rem;
+    }
+    .banner-size-large {
+      font-size: 2.9rem;
+    }
+    .banner-size-huge {
+      font-size: 3.8rem;
+    }
+
+    /* Visual Styles */
+    .banner-style-neon {
+      color: #ffffff;
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(12px);
+      border: 3px solid #38bdf8;
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.8), inset 0 0 16px rgba(56, 189, 248, 0.35);
+      text-shadow: 0 0 12px rgba(56, 189, 248, 0.95), 0 2px 5px rgba(0, 0, 0, 0.95);
+    }
+
+    .banner-style-glass {
+      color: #f8fafc;
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(16px);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7);
+      text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 4px 10px rgba(0,0,0,0.9);
+    }
+
+    .banner-style-alert {
+      color: #ffffff;
+      background: linear-gradient(135deg, rgba(220, 38, 38, 0.92), rgba(185, 28, 28, 0.98));
+      border: 3px solid #fecaca;
+      box-shadow: 0 0 32px rgba(239, 68, 68, 0.85);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
+    }
+
+    .banner-style-clean {
+      color: #ffff00;
+      background: transparent;
+      text-shadow:
+        -3px -3px 0 #000,
+         3px -3px 0 #000,
+        -3px  3px 0 #000,
+         3px  3px 0 #000,
+        -5px  0px 0 #000,
+         5px  0px 0 #000,
+         0px -5px 0 #000,
+         0px  5px 0 #000,
+         0 8px 18px rgba(0, 0, 0, 1);
+      -webkit-text-stroke: 2px #000;
+    }
+  </style>
+</head>
+<body class="bg-transparent">
+  <!-- Fullscreen Visual Effects Canvas -->
+  <canvas id="effect-canvas" class="effect-canvas"></canvas>
+
+  <!-- Custom Text & Marquee Layer for OBS -->
+  <div id="custom-banner-layer" class="custom-banner-layer pos-top"></div>
+
+  <div id="overlay-container" class="pos-bottom align-center size-large text-stroke-strong">
+    <div id="subtitle-box" class="subtitle-box hidden">
+      <div id="avatar-container" class="avatar-container">
+        <img id="avatar-img" class="avatar-img" src="" alt="Avatar">
+      </div>
+      <div class="subtitle-text-group">
+        <div id="sub-original" class="subtitle-original"></div>
+        <div id="sub-translation" class="subtitle-translation"></div>
+      </div>
+      <div id="avatar-spacer" class="avatar-spacer" style="display:none;"></div>
+    </div>
+  </div>
+
+  <script src="/effects.js?v=20261001"></script>
+  <script src="/overlay.js?v=20261001_final"></script>
+</body>
+</html>

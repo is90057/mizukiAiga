@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>即時中日連續字幕機</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #111; color: #fff; padding: 30px; margin: 0; }
+        h1 { color: #888; font-size: 1.1rem; margin: 0; }
+        .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 15px; flex-wrap: wrap; }
+        .controls { display: flex; align-items: center; gap: 12px; }
+        button { background: #4cd137; color: #111; border: 0; border-radius: 999px; padding: 8px 16px; font-size: 0.95rem; font-weight: 700; cursor: pointer; }
+        button.live { background: #333; color: #fff; }
+        #status { color: #aaa; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: #666; display: inline-block; }
+        .dot.on { background: #4cd137; box-shadow: 0 0 0 0 rgba(76, 209, 55, 0.7); animation: pulse 1.4s infinite; }
+        .dot.warn { background: #f1c40f; }
+        @keyframes pulse {
+            70% { box-shadow: 0 0 0 8px rgba(76, 209, 55, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 209, 55, 0); }
+        }
+        .box { display: flex; gap: 20px; height: 80vh; }
+        .panel { flex: 1; background: #222; border-radius: 12px; padding: 25px; display: flex; flex-direction: column; min-width: 0; }
+        h2 { margin-top: 0; color: #aaa; font-size: 1.3rem; border-bottom: 1px solid #441; padding-bottom: 10px; }
+        .content { flex-grow: 1; font-size: 2rem; line-height: 1.5; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        #jp { color: #4cd137; }
+        #jp .interim { color: #d4ffcf; font-style: normal; }
+        .interim { color: #777; font-style: italic; }
+        @media (max-width: 800px) {
+            body { padding: 16px; }
+            .box { flex-direction: column; height: auto; }
+            .panel { min-height: 40vh; }
+        }
+    </style>
+</head>
+<body>
+    <div class="top">
+        <h1>🎤 連續聽寫中日字幕機（請用 Google Chrome）</h1>
+        <div class="controls">
+            <span id="status"><span id="dot" class="dot"></span><span id="status-text">按開始聆聽</span></span>
+            <button id="toggle" type="button">開始聆聽</button>
+        </div>
+    </div>
+    <div class="box">
+        <div class="panel">
+            <h2>中文原文</h2>
+            <div id="cn" class="content"><span id="cn-final"></span><span id="cn-interim" class="interim"></span></div>
+        </div>
+        <div class="panel">
+            <h2>日文字幕</h2>
+            <div id="jp" class="content"><span id="jp-final"></span><span id="jp-interim" class="interim"></span></div>
+        </div>
+    </div>
+
+    <script>
+        const cnFinalSpan = document.getElementById('cn-final');
+        const cnInterimSpan = document.getElementById('cn-interim');
+        const jpFinalSpan = document.getElementById('jp-final');
+        const jpInterimSpan = document.getElementById('jp-interim');
+        const cnBox = document.getElementById('cn');
+        const jpBox = document.getElementById('jp');
+        const toggleBtn = document.getElementById('toggle');
+        const dot = document.getElementById('dot');
+        const statusText = document.getElementById('status-text');
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const STABLE_MS = 1400;
+        const MERGE_WINDOW_MS = 8000;
+        const MAX_LINES = 400;
+
+        const lines = [];
+        const cache = new Map();
+
+        let wantListen = false;
+        let running = false;
+        let startLock = false;
+        let blockRestart = false;
+        let committedUpTo = 0;
+        let interimZh = '';
+        let interimJp = '';
+        let interimToken = 0;
+        let interimTimer = null;
+        let stableTimer = null;
+        let lastInterimSent = '';
+        let sessionStartedAt = 0;
+        let gotResultThisSession = false;
+        let lastCommitAt = 0;
+
+        function setStatus(text, mode) {
+            statusText.textContent = text;
+            dot.className = 'dot' + (mode === 'on' ? ' on' : mode === 'warn' ? ' warn' : '');
+        }
+
+        function scrollToEnd(box) {
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function normalize(text) {
+            return text.replace(/[\s，。！？、,.!?;；：:「」"'“”‘’（）()\-]/g, '').toLowerCase();
+        }
+
+        function isMeaningful(text) {
+            return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(text);
+        }
+
+        function render() {
+            cnFinalSpan.textContent = lines.map((line) => line.zh).join('\n') + (lines.length ? '\n' : '');
+            cnInterimSpan.textContent = interimZh;
+            jpFinalSpan.textContent = lines.map((line) => line.jp || '…').join('\n') + (lines.length ? '\n' : '');
+            jpInterimSpan.textContent = interimJp;
+            scrollToEnd(cnBox);
+            scrollToEnd(jpBox);
+        }
+
+        function trimLines() {
+            if (lines.length > MAX_LINES) lines.splice(0, lines.length - MAX_LINES);
+        }
+
+        async function translateGoogle(text) {
+            const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-TW&tl=ja&dt=t&dj=1&q=' + encodeURIComponent(text);
+            const response = await fetch(url, { signal: AbortSignal.timeout(7000) });
+            if (!response.ok) throw new Error('google ' + response.status);
+            const data = await response.json();
+            const jp = (data.sentences || []).map((sentence) => sentence.trans || '').join('').trim();
+            if (!jp) throw new Error('google empty');
+            return jp;
+        }
+
+        async function translateMyMemory(text) {
+            const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=zh-TW|ja';
+            const response = await fetch(url, { signal: AbortSignal.timeout(7000) });
+            if (!response.ok) throw new Error('mymemory ' + response.status);
+            const data = await response.json();
+            const jp = (data.responseData && data.responseData.translatedText || '').trim();
+            if (!jp || /MYMEMORY WARNING|INVALID LANGUAGE|QUERY LENGTH/i.test(jp)) {
+                throw new Error('mymemory rejected');
+            }
+            return jp;
+        }
+
+        async function translateText(text) {
+            const key = text.trim();
+            if (cache.has(key)) return cache.get(key);
+            const attempts = [translateGoogle, translateGoogle, translateMyMemory];
+            let lastError;
+            for (const attempt of attempts) {
+                try {
+                    const jp = await attempt(key);
+                    cache.set(key, jp);
+                    if (cache.size > 300) cache.delete(cache.keys().next().value);
+                    return jp;
+                } catch (error) {
+                    lastError = error;
+                }
+            }
+            throw lastError;
+        }
+
+        function translateLine(line) {
+            const token = ++line.token;
+            translateText(line.zh).then((jp) => {
+                if (line.token !== token) return;
+                line.jp = jp;
+                render();
+            }).catch(() => {
+                if (line.token !== token) return;
+                line.jp = '（翻譯失敗）';
+                setStatus('翻譯暫時失敗，仍在聆聽', 'warn');
+                render();
+            });
+        }
+
+        function commit(text) {
+            const raw = text.trim();
+            if (!isMeaningful(raw)) return false;
+            const norm = normalize(raw);
+            if (!norm) return false;
+
+            const last = lines[lines.length - 1];
+            if (last && Date.now() - lastCommitAt < MERGE_WINDOW_MS) {
+                const lastNorm = normalize(last.zh);
+                if (norm === lastNorm) return false;
+                if (lastNorm && (norm.startsWith(lastNorm) || lastNorm.startsWith(norm))) {
+                    if (norm.length <= lastNorm.length) return false;
+                    last.zh = raw;
+                    last.jp = cache.get(raw) || '';
+                    lastCommitAt = Date.now();
+                    trimLines();
+                    interimZh = '';
+                    interimJp = '';
+                    interimToken++;
+                    lastInterimSent = '';
+                    render();
+                    translateLine(last);
+                    return true;
+                }
+            }
+
+            const line = { zh: raw, jp: cache.get(raw) || '', token: 0 };
+            lines.push(line);
+            lastCommitAt = Date.now();
+            trimLines();
+            interimZh = '';
+            interimJp = '';
+            interimToken++;
+            lastInterimSent = '';
+            clearTimeout(interimTimer);
+            render();
+            translateLine(line);
+            return true;
+        }
+
+        function scheduleInterimTranslate(text) {
+            clearTimeout(interimTimer);
+            const snapshot = text.trim();
+            if (!isMeaningful(snapshot)) {
+                interimJp = '';
+                jpInterimSpan.textContent = '';
+                return;
+            }
+            interimTimer = setTimeout(() => {
+                if (snapshot === lastInterimSent) return;
+                const token = ++interimToken;
+                translateText(snapshot).then((jp) => {
+                    if (token !== interimToken) return;
+                    lastInterimSent = snapshot;
+                    interimJp = jp;
+                    jpInterimSpan.textContent = jp;
+                    scrollToEnd(jpBox);
+                }).catch(() => {
+                    if (token !== interimToken) return;
+                });
+            }, 220);
+        }
+
+        function scheduleCommit(delay) {
+            clearTimeout(stableTimer);
+            stableTimer = setTimeout(() => {
+                const text = interimZh.trim();
+                if (text) commit(text);
+            }, delay);
+        }
+
+        function safeStart() {
+            if (!wantListen || running || startLock || blockRestart) return;
+            startLock = true;
+            try {
+                recognition.start();
+                running = true;
+                sessionStartedAt = Date.now();
+                gotResultThisSession = false;
+            } catch (error) {
+                running = false;
+                startLock = false;
+                if (error && error.name === 'InvalidStateError') running = true;
+            }
+        }
+
+        async function canRestartWithoutPrompt() {
+            if (location.protocol === 'file:') return false;
+            try {
+                const status = await navigator.permissions.query({ name: 'microphone' });
+                return status.state === 'granted';
+            } catch (error) {
+                return true;
+            }
+        }
+
+        function updateButton() {
+            toggleBtn.textContent = wantListen ? '停止聆聽' : '開始聆聽';
+            toggleBtn.classList.toggle('live', wantListen);
+        }
+
+        if (!SpeechRecognition) {
+            setStatus('這個瀏覽器沒有語音辨識，請改用 Chrome', 'warn');
+            toggleBtn.disabled = true;
+        }
+
+        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+        if (recognition) {
+            recognition.lang = 'zh-TW';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                running = true;
+                startLock = false;
+                committedUpTo = 0;
+                sessionStartedAt = Date.now();
+                gotResultThisSession = false;
+                setStatus('聆聽中', 'on');
+            };
+
+            recognition.onspeechstart = () => {
+                setStatus('辨識中', 'on');
+            };
+
+            recognition.onresult = (event) => {
+                gotResultThisSession = true;
+                let finalText = '';
+                let nextInterim = '';
+
+                for (let i = 0; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        if (i >= committedUpTo) {
+                            finalText += transcript;
+                            committedUpTo = i + 1;
+                        }
+                    } else {
+                        nextInterim += transcript;
+                    }
+                }
+
+                if (finalText.trim()) commit(finalText.trim());
+
+                const last = lines[lines.length - 1];
+                if (last && normalize(nextInterim) === normalize(last.zh)) nextInterim = '';
+                interimZh = nextInterim;
+                cnInterimSpan.textContent = interimZh;
+                scrollToEnd(cnBox);
+
+                if (interimZh.trim()) {
+                    scheduleInterimTranslate(interimZh);
+                    scheduleCommit(STABLE_MS);
+                } else {
+                    clearTimeout(stableTimer);
+                    clearTimeout(interimTimer);
+                    interimJp = '';
+                    jpInterimSpan.textContent = '';
+                }
+
+                if (wantListen) setStatus('聆聽中', 'on');
+            };
+
+            recognition.onspeechend = () => {
+                if (interimZh.trim()) scheduleCommit(700);
+            };
+
+            recognition.onerror = (event) => {
+                const code = event.error;
+                if (code === 'aborted' || code === 'no-speech') return;
+                if (code === 'not-allowed' || code === 'service-not-allowed') {
+                    blockRestart = true;
+                    wantListen = false;
+                    running = false;
+                    updateButton();
+                    setStatus('請按開始聆聽，並允許麥克風', 'warn');
+                    return;
+                }
+                if (code === 'audio-capture') {
+                    blockRestart = true;
+                    wantListen = false;
+                    running = false;
+                    updateButton();
+                    setStatus('找不到麥克風', 'warn');
+                    return;
+                }
+                if (code === 'network') setStatus('語音服務連線中斷，仍會繼續聽', 'warn');
+            };
+
+            recognition.onend = () => {
+                running = false;
+                startLock = false;
+                if (blockRestart || !wantListen) {
+                    blockRestart = false;
+                    if (!wantListen) setStatus('已停止', '');
+                    return;
+                }
+                const endedTooFast = !gotResultThisSession && Date.now() - sessionStartedAt < 800;
+                if (endedTooFast) {
+                    wantListen = false;
+                    updateButton();
+                    setStatus('請按開始聆聽，並允許麥克風', 'warn');
+                    return;
+                }
+                canRestartWithoutPrompt().then((allowed) => {
+                    if (!wantListen || running || blockRestart) return;
+                    if (!allowed) {
+                        wantListen = false;
+                        updateButton();
+                        const viaFile = location.protocol === 'file:';
+                        setStatus(viaFile ? '直接開檔案時，下一句要再按開始。請改用本機網址開這頁' : '這句結束了，請再按一次開始聆聽', 'warn');
+                        return;
+                    }
+                    setStatus('繼續聆聽', 'on');
+                    setTimeout(safeStart, 300);
+                });
+            };
+        }
+
+        toggleBtn.addEventListener('click', () => {
+            if (!recognition) return;
+            if (wantListen) {
+                wantListen = false;
+                blockRestart = true;
+                running = false;
+                clearTimeout(stableTimer);
+                clearTimeout(interimTimer);
+                try { recognition.stop(); } catch (error) { /* 已停止 */ }
+                updateButton();
+                setStatus('已停止', '');
+                return;
+            }
+            wantListen = true;
+            blockRestart = false;
+            updateButton();
+            setStatus('請允許麥克風，之後會一直聽', 'warn');
+            safeStart();
+        });
+
+        if (location.protocol === 'file:') {
+            setStatus('請用本機網址開啟，直接開檔案每一句都會重問權限', 'warn');
+        }
+    </script>
+</body>
+</html>

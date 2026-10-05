@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="app_title">OBS 即時雙語字幕機 | 原文與翻譯</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Floating HUD in Pure Green Mode (auto-hides on idle) -->
+  <div id="pure-green-hud" class="pure-green-hud">
+    <button id="btn-toggle-listen-hud" class="btn btn-primary btn-sm" type="button" data-i18n-title="btn_listen_start" title="開始/停止聆聽">
+      <span id="listen-icon-hud">🎤</span>
+      <span id="listen-btn-text-hud" data-i18n="btn_listen_start">開始聆聽</span>
+    </button>
+    <div style="display:flex; align-items:center; gap:4px; padding: 0 4px; border-left:1px solid rgba(255,255,255,0.15); border-right:1px solid rgba(255,255,255,0.15);">
+      <button class="btn-effect btn-sm" data-effect="fireworks" type="button" data-i18n-title="effect_fireworks_title" title="放煙火">🎆</button>
+      <button class="btn-effect btn-sm" data-effect="glass" type="button" data-i18n-title="effect_glass_title" title="砸破螢幕">💥</button>
+      <button class="btn-effect btn-sm" data-effect="flowers" type="button" data-i18n-title="effect_flowers_title" title="送花">💐</button>
+      <button class="btn-effect btn-sm" data-effect="confetti" type="button" data-i18n-title="effect_confetti_title" title="彩帶">🎉</button>
+      <button class="btn-effect btn-sm" data-effect="hearts" type="button" data-i18n-title="effect_hearts_title" title="愛心">💖</button>
+      <button class="btn-effect btn-sm" data-effect="lightning" type="button" data-i18n-title="effect_lightning_title" title="閃電">⚡</button>
+    </div>
+    <button id="btn-exit-green-mode" class="btn btn-secondary btn-sm" type="button" data-i18n-title="pure_green_restore_title" title="恢復顯示功能欄 (快捷鍵: H / Esc)">
+      <span data-i18n="pure_green_restore">👁️ 恢復功能欄</span>
+    </button>
+    <span class="hud-shortcut-hint">H / Esc</span>
+  </div>
+
+  <!-- Top Navbar -->
+  <header class="navbar">
+    <div class="brand">
+      <span class="brand-icon">🎙️</span>
+      <div>
+        <h1 data-i18n="app_title">OBS 即時雙語字幕機</h1>
+      </div>
+      <span class="badge" data-i18n="app_badge">雙語同步・綠幕支援</span>
+    </div>
+
+    <div class="nav-actions">
+      <!-- Volume Meter -->
+      <div class="volume-meter" title="麥克風輸入音量">
+        <div id="volume-bar" class="volume-bar"></div>
+      </div>
+
+      <!-- Status Indicator -->
+      <div class="status-pill">
+        <span id="status-dot" class="dot"></span>
+        <span id="status-text" data-i18n="status_ready">點擊開始聆聽</span>
+      </div>
+
+      <!-- Start/Stop Recognition Button -->
+      <button id="btn-toggle-listen" class="btn btn-primary" type="button">
+        <span id="listen-icon">🎤</span>
+        <span id="listen-btn-text" data-i18n="btn_listen_start">開始聆聽</span>
+      </button>
+
+      <!-- Hide UI Button in Nav -->
+      <button id="btn-hide-ui-nav" class="btn btn-secondary" type="button" data-i18n-title="btn_hide_ui_nav_title" title="隱藏所有功能欄，只留下綠幕 (快捷鍵: H)">
+        <span data-i18n="btn_hide_ui_nav">🔲 隱藏功能欄</span>
+      </button>
+
+      <!-- OBS Tutorial Trigger -->
+      <button id="btn-open-tutorial" class="btn btn-secondary" type="button">
+        <span data-i18n="btn_tutorial">📖 OBS 教學</span>
+      </button>
+
+      <!-- UI Language Selector -->
+      <div class="lang-selector-wrapper" title="選擇介面語言 / Select Interface Language">
+        <span class="lang-globe-icon">🌐</span>
+        <select id="select-ui-lang" class="lang-select" aria-label="UI Language">
+          <option value="zh-TW">繁體中文</option>
+          <option value="zh-CN">简体中文</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <!-- OBS Internal Browser Warning Banner -->
+  <div id="obs-browser-warning" style="display:none; background: linear-gradient(90deg, #dc2626, #b91c1c); color: #fff; padding: 14px 20px; text-align: center; font-size: 0.92rem; line-height: 1.6; border-bottom: 2px solid #f87171; box-shadow: 0 4px 12px rgba(0,0,0,0.4);" data-i18n="obs_browser_warning_html" data-i18n-html="true">
+    ⚠️ <b>偵測到您在 OBS 內建瀏覽器中開啟了「控制台」！</b><br>
+    OBS 的內建瀏覽器核心限制了麥克風收音與 Google 語音辨識功能。<br>
+    👉 <b>正確做法</b>：請在電腦上用 <b>Google Chrome</b> 開啟 <code style="background:rgba(0,0,0,0.4); padding:2px 8px; border-radius:4px; font-weight:bold;">http://localhost:3000/</code> 負責收音；<br>
+    OBS 來源中請改用專用的 Overlay 網址：<code style="background:rgba(0,0,0,0.4); padding:2px 8px; border-radius:4px; font-weight:bold;">http://localhost:3000/overlay.html</code>（此頁面不需要麥克風，會自動同步 Chrome 說話字幕！）。
+  </div>
+
+  <!-- Main Container -->
+  <main class="app-container">
+    <!-- Left Column: Custom Text & History -->
+    <div class="preview-container">
+      <!-- Stage Subtitle Live Preview Card (Green Screen + Effects) -->
+      <div class="card" id="card-stage-preview">
+        <div class="card-header">
+          <div class="card-title">
+            <span>📺</span> <span data-i18n="preview_card_title">OBS 字幕即時預覽</span>
+          </div>
+          <div class="toolbar-group">
+            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.74rem;" data-i18n="preview_badge_monitor">16:9 綠幕即時監控</span>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Stage 16:9 Frame Wrapper -->
+          <div class="stage-frame-wrapper" style="margin-top: 0;">
+            <!-- Subtitle Stage Canvas -->
+            <div id="subtitle-stage" class="subtitle-stage bg-green stage-pos-bottom">
+              <!-- Fullscreen / Stage Effects Layer -->
+              <canvas id="effect-canvas-preview" class="effect-canvas"></canvas>
+
+              <!-- Custom Text & Marquee Broadcast Layer -->
+              <div id="custom-banner-layer-preview" class="custom-banner-layer pos-top"></div>
+
+              <!-- Empty state hint when no speech -->
+              <div id="stage-hint" class="stage-empty-hint" data-i18n="preview_stage_hint">
+                🎙️ 請點擊上方「開始聆聽」並對著麥克風說話...
+              </div>
+
+              <!-- Subtitle Element -->
+              <div id="preview-wrapper" class="subtitle-wrapper align-center size-large text-stroke-strong">
+                <div id="preview-box" class="subtitle-box">
+                  <!-- Avatar (Left of Subtitle) -->
+                  <div id="preview-avatar-container" class="avatar-container">
+                    <img id="preview-avatar-img" class="avatar-img" src="" alt="Avatar">
+                  </div>
+                  <div class="subtitle-text-group">
+                    <!-- Top: Original Text (原文) -->
+                    <div id="preview-original" class="subtitle-original"></div>
+                    <!-- Bottom: Translation (翻譯) -->
+                    <div id="preview-translation" class="subtitle-translation"></div>
+                  </div>
+                  <!-- Right Spacer to balance text center when avatar is on the far left -->
+                  <div id="preview-avatar-spacer" class="avatar-spacer" style="display:none;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Visual Effects Toolbar -->
+          <div class="effects-toolbar" id="effects-toolbar" style="margin-top: 12px;">
+            <span class="effects-title" data-i18n="effects_label">🎬 特效：</span>
+            <button class="btn-effect" data-effect="fireworks" type="button" data-i18n-title="effect_fireworks_title" title="施放彩色璀璨煙火">
+              <span data-i18n="effect_fireworks">🎆 煙火</span>
+            </button>
+            <button class="btn-effect" data-effect="glass" type="button" data-i18n-title="effect_glass_title" title="震撼碎屏玻璃飛濺">
+              <span data-i18n="effect_glass">💥 碎屏</span>
+            </button>
+            <button class="btn-effect" data-effect="flowers" type="button" data-i18n-title="effect_flowers_title" title="浪漫粉色花瓣雨與花束">
+              <span data-i18n="effect_flowers">💐 送花</span>
+            </button>
+            <button class="btn-effect" data-effect="confetti" type="button" data-i18n-title="effect_confetti_title" title="派對慶祝彩帶拉炮">
+              <span data-i18n="effect_confetti">🎉 彩帶</span>
+            </button>
+            <button class="btn-effect" data-effect="hearts" type="button" data-i18n-title="effect_hearts_title" title="感謝訂閱飄送愛心氣泡">
+              <span data-i18n="effect_hearts">💖 愛心</span>
+            </button>
+            <button class="btn-effect" data-effect="lightning" type="button" data-i18n-title="effect_lightning_title" title="畫面雷電霹靂閃光">
+              <span data-i18n="effect_lightning">⚡ 閃電</span>
+            </button>
+            <button class="btn-effect btn-effect-danger" data-effect="clear" type="button" data-i18n-title="effect_clear_title" title="立即清空特效">
+              <span data-i18n="effect_clear">🧹 清除</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Custom Text Broadcast & Marquee Card -->
+      <div class="card" id="card-custom-text">
+        <div class="card-header">
+          <div class="card-title">
+            <span>📢</span> <span data-i18n="custom_card_title">自訂綠幕文字與跑馬燈廣播</span>
+            <span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.35); font-size: 0.74rem;" data-i18n="custom_badge_sync">即時 OBS 0 延遲同步</span>
+          </div>
+          <div class="toolbar-group">
+            <button id="btn-clear-custom" class="btn btn-secondary btn-sm" type="button" data-i18n-title="custom_btn_clear_title" title="立即清空當前綠幕上的自訂文字/跑馬燈">
+              <span data-i18n="custom_btn_clear">🧹 清空廣播</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Text Input Row -->
+          <div class="custom-input-group">
+            <input type="text" id="input-custom-text" class="custom-text-input" placeholder="輸入要顯示在綠幕/OBS上的自訂文字（輸入完按 Enter 或點擊發送）..." data-i18n-placeholder="custom_input_placeholder" maxlength="200" autocomplete="off">
+            <button id="btn-send-custom" class="btn btn-primary" type="button">
+              <span data-i18n="custom_btn_send">🚀 發送上綠幕</span>
+            </button>
+          </div>
+
+          <!-- Quick Templates Bar -->
+          <div class="quick-templates-bar">
+            <span class="quick-tmpl-label" data-i18n="custom_tmpl_label">⚡ 常用快捷模板：</span>
+            <button type="button" class="btn-quick-tmpl" data-tmpl-key="tmpl_welcome" data-text="🎉 歡迎來到今天的直播！喜歡的話歡迎按讚追隨！" data-i18n="tmpl_welcome_btn">歡迎招呼</button>
+            <button type="button" class="btn-quick-tmpl" data-tmpl-key="tmpl_brb" data-text="☕ 稍候片刻，主播離開一下，馬上回來～" data-i18n="tmpl_brb_btn">離開小憩</button>
+            <button type="button" class="btn-quick-tmpl" data-tmpl-key="tmpl_thanks" data-text="✨ 感謝大家的斗內贊助與訂閱支持！心懷感激！" data-i18n="tmpl_thanks_btn">感謝贊助</button>
+            <button type="button" class="btn-quick-tmpl" data-tmpl-key="tmpl_rules" data-text="🔔 請注意實況規範，保持良善聊天室氛圍喔！" data-i18n="tmpl_rules_btn">實況規範</button>
+            <button type="button" class="btn-quick-tmpl" data-tmpl-key="tmpl_announce" data-text="📢 今日直播重大發表：預計下週日舉辦觀眾同樂會！" data-i18n="tmpl_announce_btn">重大公告</button>
+          </div>
+
+          <!-- Controls Grid -->
+          <div class="custom-controls-grid">
+            <!-- Mode -->
+            <div class="custom-control-item">
+              <label class="setting-label" data-i18n="custom_label_mode">顯示特效模式</label>
+              <div class="segmented-control" id="control-custom-mode">
+                <button class="seg-btn active" data-val="marquee-loop" data-i18n="custom_mode_marquee_loop">🔄 循環跑馬燈</button>
+                <button class="seg-btn" data-val="marquee-once" data-i18n="custom_mode_marquee_once">📢 單次跑馬燈</button>
+                <button class="seg-btn" data-val="static" data-i18n="custom_mode_static">📌 靜態橫幅</button>
+              </div>
+            </div>
+
+            <!-- Position -->
+            <div class="custom-control-item">
+              <label class="setting-label" data-i18n="custom_label_pos">綠幕位置選擇</label>
+              <div class="segmented-control" id="control-custom-pos">
+                <button class="seg-btn active" data-val="top" data-i18n="custom_pos_top">頂部 (Top)</button>
+                <button class="seg-btn" data-val="center" data-i18n="custom_pos_center">中間 (Center)</button>
+                <button class="seg-btn" data-val="bottom" data-i18n="custom_pos_bottom">底部 (Bottom)</button>
+              </div>
+            </div>
+
+            <!-- Speed -->
+            <div class="custom-control-item">
+              <label class="setting-label" data-i18n="custom_label_speed">跑馬燈滑動速度</label>
+              <div class="segmented-control" id="control-custom-speed">
+                <button class="seg-btn" data-val="slow" data-i18n="custom_speed_slow">慢速</button>
+                <button class="seg-btn active" data-val="normal" data-i18n="custom_speed_normal">標準</button>
+                <button class="seg-btn" data-val="fast" data-i18n="custom_speed_fast">快速</button>
+                <button class="seg-btn" data-val="rapid" data-i18n="custom_speed_rapid">極速</button>
+              </div>
+            </div>
+
+            <!-- Duration -->
+            <div class="custom-control-item">
+              <label class="setting-label" data-i18n="custom_label_duration">顯示多久後消失</label>
+              <select id="select-custom-duration" class="select-control">
+                <option value="0" selected data-i18n="custom_dur_persist">持續顯示 (直到手動清除)</option>
+                <option value="auto" data-i18n="custom_dur_auto">跑完單趟自動消失 (跑馬燈)</option>
+                <option value="3" data-i18n="custom_dur_3">3 秒後消失</option>
+                <option value="5" data-i18n="custom_dur_5">5 秒後消失</option>
+                <option value="10" data-i18n="custom_dur_10">10 秒後消失</option>
+                <option value="20" data-i18n="custom_dur_20">20 秒後消失</option>
+                <option value="30" data-i18n="custom_dur_30">30 秒後消失</option>
+              </select>
+            </div>
+
+            <!-- Font Size -->
+            <div class="custom-control-item">
+              <label class="setting-label" data-i18n="custom_label_size">字幕字體大小</label>
+              <div class="segmented-control" id="control-custom-size">
+                <button class="seg-btn" data-val="small" data-i18n="custom_size_small">小</button>
+                <button class="seg-btn active" data-val="medium" data-i18n="custom_size_medium">中</button>
+                <button class="seg-btn" data-val="large" data-i18n="custom_size_large">大</button>
+                <button class="seg-btn" data-val="huge" data-i18n="custom_size_huge">特大</button>
+              </div>
+            </div>
+
+            <!-- Visual Style -->
+            <div class="custom-control-item">
+              <label class="setting-label" data-i18n="custom_label_style">文字視覺風格</label>
+              <div class="segmented-control" id="control-custom-style">
+                <button class="seg-btn active" data-val="neon" data-i18n="custom_style_neon">🌈 霓虹光暈</button>
+                <button class="seg-btn" data-val="glass" data-i18n="custom_style_glass">🏷️ 深色玻璃</button>
+                <button class="seg-btn" data-val="alert" data-i18n="custom_style_alert">🔴 醒目紅牌</button>
+                <button class="seg-btn" data-val="clean" data-i18n="custom_style_clean">🔲 簡約黑邊</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History & Transcription Log Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span>📜</span> <span data-i18n="history_card_title">即時辨識與翻譯紀錄</span>
+          </div>
+          <div class="toolbar-group">
+            <button id="btn-export-log" class="btn btn-secondary btn-sm" type="button">
+              <span data-i18n="btn_export_log">💾 匯出文字檔</span>
+            </button>
+            <button id="btn-clear-log" class="btn btn-secondary btn-sm" type="button">
+              <span data-i18n="btn_clear_log">清空紀錄</span>
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="history-list" class="history-list">
+            <!-- Dynamic history items will appear here -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Settings Sidebar -->
+    <aside class="settings-sidebar">
+      <div class="sidebar-header-bar">
+        <div class="sidebar-header-title" data-i18n="sidebar_title">⚙️ 控制設定面板</div>
+        <div class="sidebar-header-actions">
+          <button id="btn-collapse-all" class="btn-link-action" type="button" data-i18n-title="btn_collapse_all_title" title="全部收合以節省畫面空間" data-i18n="btn_collapse_all">全部收合</button>
+          <span class="action-divider">|</span>
+          <button id="btn-expand-all" class="btn-link-action" type="button" data-i18n-title="btn_expand_all_title" title="全部展開以調整細項" data-i18n="btn_expand_all">全部展開</button>
+        </div>
+      </div>
+
+      <!-- OBS Quick Action Toolbar (Always Open / Non-collapsible) -->
+      <div class="card" id="card-quick-actions">
+        <div class="card-header" style="padding: 10px 14px;">
+          <div class="card-title" style="font-size: 0.95rem;">
+            <span>⚡</span> <span data-i18n="quick_actions_title">OBS 字幕即時操作</span>
+          </div>
+        </div>
+        <div class="card-body" style="padding: 12px 14px;">
+          <div class="quick-action-btns">
+            <button id="btn-test-sub" class="btn btn-secondary btn-sm" type="button" data-i18n-title="btn_test_sub_title" title="發送測試雙語字幕">
+              <span data-i18n="btn_test_sub">✨ 測試字幕</span>
+            </button>
+            <button id="btn-clear-sub" class="btn btn-secondary btn-sm" type="button" data-i18n-title="btn_clear_sub_title" title="清空當前畫面字幕">
+              <span data-i18n="btn_clear_sub">🗑️ 清除</span>
+            </button>
+            <button id="btn-copy-url" class="btn btn-accent btn-sm" type="button" data-i18n-title="btn_copy_url_title" title="複製 OBS 瀏覽器來源網址">
+              <span data-i18n="btn_copy_url">📋 複製 OBS 網址</span>
+            </button>
+            <button id="btn-hide-ui" class="btn btn-primary btn-sm btn-fullwidth-action" type="button" data-i18n-title="btn_hide_ui_title" title="隱藏所有功能欄，進入全螢幕純綠幕 (快捷鍵: H / Esc)">
+              <span data-i18n="btn_hide_ui">🔲 全螢幕純綠幕 (隱藏功能欄)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Microphone & Audio Input Settings Card -->
+      <div class="card card-collapsible" id="card-settings-mic">
+        <div class="card-header collapsible-header" data-target="card-settings-mic" role="button" tabindex="0" data-i18n-title="card_mic_title_tooltip" title="點擊收合 / 展開麥克風設定">
+          <div class="card-title">
+            <span class="card-title-icon">🎙️</span>
+            <span class="card-title-text" data-i18n="card_mic_title">麥克風收音設定</span>
+            <span class="collapse-summary" id="summary-mic">系統預設 · 待機</span>
+          </div>
+          <button class="btn-collapse-toggle" type="button" aria-label="收合或展開">
+            <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
+        <div class="card-body collapsible-body">
+          <!-- Device Selection -->
+          <div class="setting-group">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label class="setting-label" for="select-mic-device" style="margin-bottom:0;" data-i18n="label_mic_device">麥克風輸入裝置</label>
+              <button id="btn-refresh-mics" class="btn btn-secondary btn-xs" type="button" data-i18n-title="btn_refresh_mics_title" title="重新掃描已連接的麥克風裝置">
+                <span data-i18n="btn_refresh_mics">🔄 重新掃描</span>
+              </button>
+            </div>
+            <select id="select-mic-device" class="select-control">
+              <option value="default" data-i18n="opt_sys_default_mic">系統預設麥克風 (System Default)</option>
+            </select>
+          </div>
+
+          <!-- Live Volume Meter & Test Button -->
+          <div class="setting-group" style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:0.82rem; font-weight:600; color:#e2e8f0;" data-i18n="mic_meter_title">即時收音音量監聽</span>
+              <span id="mic-test-status" class="badge" style="font-size:0.72rem; background:rgba(255,255,255,0.08); color:#94a3b8;" data-i18n="mic_status_standby">待機中</span>
+            </div>
+            <div class="mic-level-meter-wrapper">
+              <div id="mic-settings-volume-bar" class="mic-level-meter-bar"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+              <button id="btn-test-mic" class="btn btn-secondary btn-sm" type="button" data-i18n-title="btn_test_mic_title" title="測試麥克風收音，不啟動翻譯">
+                <span id="test-mic-icon">🎤</span> <span id="test-mic-text" data-i18n="btn_test_mic">測試麥克風收音</span>
+              </button>
+              <span id="mic-db-text" style="font-size:0.78rem; color:#94a3b8; font-family:monospace; font-weight:bold;">0%</span>
+            </div>
+          </div>
+
+          <!-- Software Gain Slider -->
+          <div class="setting-group">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label class="setting-label" for="slider-mic-gain" style="margin-bottom:0;" data-i18n="label_mic_gain">軟體收音放大增益 (Gain)</label>
+              <span id="label-mic-gain" style="font-family:monospace; font-size:0.82rem; color:#38bdf8; font-weight:600;">100% (標準)</span>
+            </div>
+            <input type="range" id="slider-mic-gain" min="50" max="250" step="5" value="100" class="range-control">
+            <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#64748b; margin-top:2px;">
+              <span data-i18n="gain_hint_50">50% (降敏)</span>
+              <span data-i18n="gain_hint_100">100% (標準)</span>
+              <span data-i18n="gain_hint_250">250% (極大放大)</span>
+            </div>
+          </div>
+
+          <!-- Audio Processing Toggles -->
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_audio_filters">音訊處理濾波</label>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <label class="toggle-switch">
+                <span data-i18n="filter_noise">環境降噪 (Noise Suppression)</span>
+                <input type="checkbox" id="check-noise-suppression" checked>
+              </label>
+              <label class="toggle-switch">
+                <span data-i18n="filter_echo">回音消除 (Echo Cancellation)</span>
+                <input type="checkbox" id="check-echo-cancellation" checked>
+              </label>
+              <label class="toggle-switch">
+                <span data-i18n="filter_auto_gain">自動音量平衡 (Auto Gain Control)</span>
+                <input type="checkbox" id="check-auto-gain" checked>
+              </label>
+            </div>
+          </div>
+
+          <!-- Tips -->
+          <div class="mic-help-tip" data-i18n="mic_help_tip" data-i18n-html="true">
+            💡 <b>收音提示</b>：插入或更換 USB 麥克風後，請點擊「重新掃描」選擇該裝置。點擊「測試麥克風收音」確認音量跳動即可正常使用。
+          </div>
+        </div>
+      </div>
+
+      <!-- Language Selection Card -->
+      <div class="card card-collapsible" id="card-settings-lang">
+        <div class="card-header collapsible-header" data-target="card-settings-lang" role="button" tabindex="0" data-i18n-title="card_lang_title_tooltip" title="點擊收合 / 展開語言設定">
+          <div class="card-title">
+            <span class="card-title-icon">🌐</span>
+            <span class="card-title-text" data-i18n="card_lang_title">語言設定</span>
+            <span class="collapse-summary" id="summary-lang">繁中 ➜ 日文 · 敏捷</span>
+          </div>
+          <button class="btn-collapse-toggle" type="button" aria-label="收合或展開">
+            <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
+        <div class="card-body collapsible-body">
+          <!-- UI Language in Settings -->
+          <div class="setting-group" style="padding-bottom: 12px; border-bottom: 1px dashed rgba(255,255,255,0.08); margin-bottom: 12px;">
+            <label class="setting-label" for="select-ui-lang-settings">🌐 介面語言 (UI Language)</label>
+            <select id="select-ui-lang-settings" class="select-control">
+              <option value="zh-TW">繁體中文 (台灣 - 預設)</option>
+              <option value="zh-CN">简体中文 (中国大陆)</option>
+              <option value="en">English (US / Global)</option>
+              <option value="ja">日本語 (日本)</option>
+              <option value="ko">한국어 (대한민국)</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" for="select-source-lang" data-i18n="label_source_lang">語音輸入語言 (原文)</label>
+            <select id="select-source-lang" class="select-control">
+              <option value="zh-TW" selected>繁體中文 (台灣)</option>
+              <option value="zh-CN">普通話 (簡體中文)</option>
+              <option value="zh-HK">粵語 (香港)</option>
+              <option value="en-US">English (美國)</option>
+              <option value="ja-JP">日本語 (日語)</option>
+              <option value="ko-KR">한국어 (韓語)</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" for="select-target-lang" data-i18n="label_target_lang">翻譯輸出語言 (字幕)</label>
+            <select id="select-target-lang" class="select-control">
+              <option value="ja" selected>日本語 (日文)</option>
+              <option value="en">English (英文)</option>
+              <option value="zh-TW">繁體中文</option>
+              <option value="zh-CN">簡體中文</option>
+              <option value="ko">한국어 (韓文)</option>
+              <option value="es">Español (西班牙文)</option>
+              <option value="fr">Français (法文)</option>
+              <option value="de">Deutsch (德文)</option>
+            </select>
+          </div>
+
+          <!-- Translation Engine Switch -->
+          <div class="setting-group" style="margin-top: 14px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label class="setting-label" style="margin-bottom: 0;" data-i18n="label_trans_engine">🌐 翻譯核心引擎</label>
+              <span id="trans-engine-badge" class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;" data-i18n="badge_trans_engine_online">線上雲端</span>
+            </div>
+            <div class="segmented-control" id="control-trans-engine">
+              <button class="seg-btn active" data-val="online" data-i18n-title="engine_online_title" title="使用線上雲端翻譯（Google Translate + 備援）：免下載模型、支援語系最多、即開即用" data-i18n="engine_online">🌐 線上雲端翻譯</button>
+              <button class="seg-btn" data-val="chrome" data-i18n-title="engine_chrome_title" title="使用 Chrome 瀏覽器內建本機 AI 翻譯（Translator API）：本機離線運算、極速低延遲、免傳送雲端" data-i18n="engine_chrome">⚡ Chrome 內建翻譯</button>
+            </div>
+          </div>
+
+          <!-- Chrome Built-in Translator Settings Panel (Conditional Display) -->
+          <div id="chrome-translator-panel" class="chrome-trans-box" style="display: none;">
+            <div class="chrome-trans-header">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:1.1rem;">🧠</span>
+                <span style="font-size:0.85rem; font-weight:700; color:#e2e8f0;" data-i18n="chrome_panel_title">Chrome 本機 AI 翻譯設定</span>
+              </div>
+              <span id="chrome-api-status-badge" class="badge" style="font-size:0.7rem; background:rgba(255,255,255,0.08); color:#94a3b8;" data-i18n="chrome_status_checking">檢測中...</span>
+            </div>
+
+            <!-- Language Pair & Model Availability Status -->
+            <div class="chrome-trans-row">
+              <div class="chrome-trans-meta">
+                <span class="chrome-trans-label" data-i18n="chrome_label_current_model">當前模型：</span>
+                <span id="chrome-model-pair-text" style="font-family:monospace; font-size:0.8rem; color:#38bdf8; font-weight:bold;">zh-TW ➜ ja</span>
+              </div>
+              <div class="chrome-trans-meta">
+                <span class="chrome-trans-label" data-i18n="chrome_label_status">狀態：</span>
+                <span id="chrome-model-status-text" style="font-size:0.8rem; font-weight:600; color:#94a3b8;" data-i18n="chrome_status_untested">未檢測</span>
+              </div>
+            </div>
+
+            <!-- Download Model Action & Progress -->
+            <div id="chrome-download-controls" style="margin-top: 10px;">
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button id="btn-download-chrome-model" class="btn btn-primary btn-sm" type="button" title="下載當前語言組合的 Chrome 本機翻譯模型">
+                  <span id="download-model-icon">📥</span> <span id="download-model-text" data-i18n="btn_download_chrome_model">下載 / 載入本機模型</span>
+                </button>
+                <button id="btn-test-chrome-trans" class="btn btn-secondary btn-sm" type="button" title="測試當前 Chrome 內建翻譯輸出">
+                  <span data-i18n="btn_test_chrome_trans">✨ 測試本機翻譯</span>
+                </button>
+                <button id="btn-check-chrome-avail" class="btn btn-secondary btn-xs" type="button" title="重新檢測當前語言模型可用狀態">
+                  <span data-i18n="btn_check_chrome_avail">🔄 重新檢測</span>
+                </button>
+              </div>
+
+              <!-- Progress Bar (shown when downloading) -->
+              <div id="chrome-model-progress-container" style="display:none; margin-top:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">
+                  <span id="chrome-progress-label" data-i18n="chrome_download_label">正在下載語言包模型...</span>
+                  <span id="chrome-progress-percent" style="font-family:monospace; font-weight:bold; color:#38bdf8;">0%</span>
+                </div>
+                <div class="mic-level-meter-wrapper" style="height:8px;">
+                  <div id="chrome-model-progress-bar" class="mic-level-meter-bar" style="width:0%; background: linear-gradient(90deg, #38bdf8, #818cf8);"></div>
+                </div>
+              </div>
+
+              <!-- Test Translation Result Feedback Box -->
+              <div id="chrome-test-result-box" style="display:none; margin-top:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:8px 10px; font-size:0.8rem;">
+                <div style="color:#94a3b8; font-size:0.72rem; margin-bottom:2px;" data-i18n="chrome_test_box_label">測試翻譯結果：</div>
+                <div id="chrome-test-result-text" style="color:#38bdf8; font-weight:600; line-height:1.4;"></div>
+              </div>
+            </div>
+
+            <!-- Auto Fallback Toggle -->
+            <div style="margin-top: 12px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
+              <label class="toggle-switch">
+                <span data-i18n="check_chrome_fallback">本機模型未就緒或出錯時自動以線上雲端備援</span>
+                <input type="checkbox" id="check-chrome-fallback-online" checked>
+              </label>
+            </div>
+
+            <!-- Flag Guidance Hint (shown if browser API is missing) -->
+            <div id="chrome-flags-guide" class="chrome-guide-box" style="display:none;">
+              <div style="font-weight:700; color:#fbbf24; margin-bottom:4px; font-size:0.8rem;" data-i18n="chrome_flags_title">
+                ⚠️ 您的 Chrome 尚未開啟本機 Translation API 實驗功能
+              </div>
+              <div style="font-size:0.74rem; color:#cbd5e1; line-height:1.5;" data-i18n="chrome_flags_body" data-i18n-html="true">
+                Chrome 內建翻譯需於 <b>Google Chrome 131+ (或 Canary)</b> 中啟用旗標：<br>
+                1. 網址列開啟：<code style="background:rgba(0,0,0,0.5); padding:1px 6px; border-radius:3px; color:#38bdf8;">chrome://flags/#translation-api</code><br>
+                2. 將 <b>Translation API</b> 設為 <b>Enabled</b> 並重啟 Chrome。<br>
+                💡 啟用前系統會自動以「線上雲端翻譯」為您服務，確保字幕不中斷！
+              </div>
+              <button id="btn-copy-chrome-flags-url" class="btn btn-secondary btn-xs" type="button" style="margin-top:6px;">
+                <span data-i18n="btn_copy_flags_url">📋 複製 flags 網址</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Subtitle Rhythm / Stream Mode Control (Approach A) -->
+          <div class="setting-group" style="margin-top: 14px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label class="setting-label" style="margin-bottom: 0;" data-i18n="label_stream_mode">⚡ 字幕出字節奏</label>
+              <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;" data-i18n="badge_stream_instant">0 延遲即說即現</span>
+            </div>
+            <div class="segmented-control" id="control-stream-mode">
+              <button class="seg-btn active" data-val="streaming" data-i18n-title="stream_mode_realtime_title" title="⚡ 即時串流浮現：說話的當下字詞立刻浮現，不需等停頓斷句，視覺反應最快最流暢！" data-i18n="stream_mode_realtime">⚡ 即時串流 (說話即出字)</button>
+              <button class="seg-btn" data-val="sentence" data-i18n-title="stream_mode_sentence_title" title="📜 講完斷句顯示：說完一整句停頓後才整句定稿顯示。" data-i18n="stream_mode_sentence">📜 講完斷句顯示 (整句定稿)</button>
+            </div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 6px; line-height: 1.4;" data-i18n="stream_mode_hint" data-i18n-html="true">
+              💡 <b>即時串流模式</b>：說話時字詞即刻浮現（不再等停頓斷句），搭配智慧短句切換，始終保持最多兩行！
+            </div>
+          </div>
+
+          <!-- Fast Speech & Sensitivity Control -->
+          <div class="setting-group" style="margin-top: 14px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label class="setting-label" style="margin-bottom: 0;" data-i18n="label_speech_speed">⚡ 語速與斷句反應速度</label>
+              <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;" data-i18n="badge_speed_fast_stream">快嘴實況專用</span>
+            </div>
+            <div class="segmented-control" id="control-speech-speed">
+              <button class="seg-btn" data-val="ultra" data-i18n-title="speech_speed_ultra_title" title="極速快嘴模式：450ms 極短停頓立即結算定稿，長句自動智慧分段，大幅減少字串累積延遲" data-i18n="speech_speed_ultra">⚡ 極速快嘴 (450ms)</button>
+              <button class="seg-btn active" data-val="normal" data-i18n-title="speech_speed_normal_title" title="敏捷標準模式：700ms 停頓結算，適合絕大多數快節奏直播" data-i18n="speech_speed_normal">🚀 敏捷標準 (700ms)</button>
+              <button class="seg-btn" data-val="relaxed" data-i18n-title="speech_speed_relaxed_title" title="悠閒演講模式：1200ms 停頓，適合慢速會議、講課" data-i18n="speech_speed_relaxed">☕ 悠閒 (1200ms)</button>
+            </div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 6px; line-height: 1.4;" data-i18n="speech_speed_hint" data-i18n-html="true">
+              💡 講話速度快或連珠炮時，建議選用「⚡ 極速快嘴」，系統會以 450ms 極短間隔迅速定稿並搭配智慧分段，大幅降低字幕累積延遲！
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Avatar / Image Settings Card -->
+      <div class="card card-collapsible" id="card-settings-avatar">
+        <div class="card-header collapsible-header" data-target="card-settings-avatar" role="button" tabindex="0" data-i18n-title="card_avatar_title_tooltip" title="點擊收合 / 展開頭像設定">
+          <div class="card-title">
+            <span class="card-title-icon">👤</span>
+            <span class="card-title-text" data-i18n="card_avatar_title">字幕頭像 / 圖片設定</span>
+            <span class="collapse-summary" id="summary-avatar">未開啟</span>
+          </div>
+          <button class="btn-collapse-toggle" type="button" aria-label="收合或展開">
+            <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
+        <div class="card-body collapsible-body">
+          <div class="avatar-preview-box">
+            <div id="sidebar-avatar-thumb" class="avatar-preview-thumb">
+              <span id="sidebar-avatar-placeholder">👤</span>
+              <img id="sidebar-avatar-img" src="" alt="頭像預覽" style="display:none;">
+            </div>
+            <div class="avatar-upload-actions">
+              <input type="file" id="file-avatar-input" accept="image/*" style="display: none;">
+              <button id="btn-upload-avatar" class="btn btn-primary btn-sm" type="button">
+                <span data-i18n="btn_upload_avatar">📁 上傳頭像圖片</span>
+              </button>
+              <button id="btn-remove-avatar" class="btn btn-secondary btn-sm" type="button" style="display: none;">
+                <span data-i18n="btn_remove_avatar">🗑️ 移除頭像</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="toggle-switch">
+              <span data-i18n="check_show_avatar">在字幕前顯示頭像</span>
+              <input type="checkbox" id="check-show-avatar">
+            </label>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_avatar_pos">頭像顯示位置</label>
+            <div class="segmented-control" id="control-avatar-pos">
+              <button class="seg-btn active" data-val="far-left" data-i18n="avatar_pos_left">畫面最左側 (固定最左邊)</button>
+              <button class="seg-btn" data-val="inline" data-i18n="avatar_pos_inline">緊貼文字左側</button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_avatar_shape">頭像外框形狀</label>
+            <div class="segmented-control" id="control-avatar-shape">
+              <button class="seg-btn active" data-val="circle" data-i18n="shape_circle">圓形</button>
+              <button class="seg-btn" data-val="rounded" data-i18n="shape_rounded">圓角</button>
+              <button class="seg-btn" data-val="square" data-i18n="shape_square">原圖方形</button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_avatar_size">頭像尺寸大小</label>
+            <div class="segmented-control" id="control-avatar-size">
+              <button class="seg-btn" data-val="small" data-i18n="avatar_size_s">小 (80px)</button>
+              <button class="seg-btn" data-val="medium" data-i18n="avatar_size_m">中 (108px)</button>
+              <button class="seg-btn active" data-val="large" data-i18n="avatar_size_l">大 (138px)</button>
+              <button class="seg-btn" data-val="huge" data-i18n="avatar_size_xl">特大 (168px)</button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_avatar_border">頭像外框粗細</label>
+            <div class="segmented-control" id="control-avatar-border">
+              <button class="seg-btn" data-val="medium" data-i18n="avatar_border_m">適中 (4px)</button>
+              <button class="seg-btn active" data-val="thick" data-i18n="avatar_border_thick">粗框 (6px)</button>
+              <button class="seg-btn" data-val="extra" data-i18n="avatar_border_extra">特粗 (8px)</button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_avatar_border_color">頭像外框顏色</label>
+            <div class="color-input-wrapper">
+              <input type="color" id="picker-avatar-border-color" class="color-swatch" value="#FFFFFF">
+              <span id="text-avatar-border-color" style="font-family:monospace; font-size:0.85rem;">#FFFFFF</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subtitle Style & OBS Chroma Key Settings Card -->
+      <div class="card card-collapsible" id="card-settings-style">
+        <div class="card-header collapsible-header" data-target="card-settings-style" role="button" tabindex="0" data-i18n-title="card_style_title_tooltip" title="點擊收合 / 展開樣式與背景設定">
+          <div class="card-title">
+            <span class="card-title-icon">🎨</span>
+            <span class="card-title-text" data-i18n="card_style_title">OBS 綠幕背景與字幕樣式</span>
+            <span class="collapse-summary" id="summary-style">純綠幕 · 大 · 雙語</span>
+          </div>
+          <button class="btn-collapse-toggle" type="button" aria-label="收合或展開">
+            <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
+        <div class="card-body collapsible-body">
+          <!-- Preview & OBS Chroma Key Background -->
+          <div class="setting-group" style="padding-bottom: 14px; border-bottom: 1px dashed rgba(255,255,255,0.08); margin-bottom: 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <label class="setting-label" style="margin-bottom:0;" data-i18n="label_bg_mode">🎬 預覽與 OBS 綠幕背景</label>
+              <span id="summary-bg-mode" class="badge" style="font-size:0.72rem; background:rgba(0,255,0,0.15); color:#4ade80;">純綠幕 (#00FF00)</span>
+            </div>
+            <div class="bg-picker-segmented" id="control-bg-mode">
+              <button class="bg-seg-btn active" data-bg="green" type="button" title="純綠幕 (#00FF00) - OBS 色度鍵去背過濾推薦">
+                <span class="bg-color-dot" style="background:#00FF00;"></span>
+                <span data-i18n="bg_pure_green">純綠幕</span>
+              </button>
+              <button class="bg-seg-btn" data-bg="broadcast" type="button" title="廣播實況綠 (#00B140) - 專業電視台廣播級色度綠">
+                <span class="bg-color-dot" style="background:#00B140;"></span>
+                <span data-i18n="bg_broadcast_green">實況綠</span>
+              </button>
+              <button class="bg-seg-btn" data-bg="blue" type="button" title="藍幕 (#0000FF) - 適合主播穿著綠色衣服或飾品">
+                <span class="bg-color-dot" style="background:#0000FF;"></span>
+                <span data-i18n="bg_blue">藍幕</span>
+              </button>
+              <button class="bg-seg-btn" data-bg="dark" type="button" title="深色底 (#0F172A) - 護眼暗色背景，便於檢視亮色字幕">
+                <span class="bg-color-dot" style="background:#0f172a; border:1px solid rgba(255,255,255,0.3);"></span>
+                <span data-i18n="bg_dark">深色底</span>
+              </button>
+              <button class="bg-seg-btn" data-bg="transparent" type="button" title="透明底 - OBS 瀏覽器來源原生透明效果">
+                <span class="bg-color-dot" style="background: repeating-conic-gradient(#64748b 0% 25%, #334155 0% 50%) 50% / 6px 6px;"></span>
+                <span data-i18n="bg_transparent">透明底</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Display Content Mode (顯示內容：雙語 / 僅原文 / 僅翻譯) -->
+          <div class="setting-group" style="padding-bottom: 14px; border-bottom: 1px dashed rgba(255,255,255,0.08); margin-bottom: 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <label class="setting-label" style="margin-bottom:0;" data-i18n="label_display_mode">👁️ 顯示內容模式</label>
+              <span id="summary-display-mode" class="badge" style="font-size:0.72rem; background:rgba(56,189,248,0.15); color:#38bdf8;">雙語（原文+翻譯）</span>
+            </div>
+            <div class="segmented-control" id="control-display-mode">
+              <button class="seg-btn active" data-val="both" data-i18n="display_mode_both">雙語（原文+翻譯）</button>
+              <button class="seg-btn" data-val="original" data-i18n="display_mode_original">僅原文</button>
+              <button class="seg-btn" data-val="translation" data-i18n="display_mode_translation">僅翻譯</button>
+            </div>
+          </div>
+
+          <!-- Font Size -->
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_font_size">字體大小</label>
+            <div class="segmented-control" id="control-font-size">
+              <button class="seg-btn" data-val="small" data-i18n="font_size_s">小 (S)</button>
+              <button class="seg-btn" data-val="medium" data-i18n="font_size_m">中 (M)</button>
+              <button class="seg-btn active" data-val="large" data-i18n="font_size_l">大 (L)</button>
+              <button class="seg-btn" data-val="huge" data-i18n="font_size_xl">特大 (XL)</button>
+            </div>
+          </div>
+
+          <!-- Stroke / Outline for OBS readability -->
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_stroke">OBS 黑邊描邊 (提高對比清晰度)</label>
+            <select id="select-stroke" class="select-control">
+              <option value="strong" selected data-i18n="stroke_strong">強烈黑邊 (推薦，色度鍵最佳)</option>
+              <option value="thick" data-i18n="stroke_thick">極粗黑邊 (適合亮色遊戲畫面)</option>
+              <option value="subtle" data-i18n="stroke_subtle">柔和陰影 (適合深色底)</option>
+              <option value="none" data-i18n="stroke_none">無描邊</option>
+            </select>
+          </div>
+
+          <!-- Alignment -->
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_align">水平對齊</label>
+            <div class="segmented-control" id="control-align">
+              <button class="seg-btn" data-val="left" data-i18n="align_left">靠左</button>
+              <button class="seg-btn active" data-val="center" data-i18n="align_center">居中</button>
+              <button class="seg-btn" data-val="right" data-i18n="align_right">靠右</button>
+            </div>
+          </div>
+
+          <!-- Position -->
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_pos">垂直位置</label>
+            <div class="segmented-control" id="control-pos">
+              <button class="seg-btn active" data-val="bottom" data-i18n="pos_bottom">底部</button>
+              <button class="seg-btn" data-val="center" data-i18n="pos_center">置中</button>
+              <button class="seg-btn" data-val="top" data-i18n="pos_top">頂部</button>
+            </div>
+          </div>
+
+          <!-- Color Pickers -->
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_orig_color">原文顏色 (上方)</label>
+            <div class="color-input-wrapper">
+              <input type="color" id="picker-orig-color" class="color-swatch" value="#FFFFFF">
+              <span id="text-orig-color" style="font-family:monospace; font-size:0.85rem;">#FFFFFF</span>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_trans_color">翻譯顏色 (下方)</label>
+            <div class="color-input-wrapper">
+              <input type="color" id="picker-trans-color" class="color-swatch" value="#FFEE55">
+              <span id="text-trans-color" style="font-family:monospace; font-size:0.85rem;">#FFEE55 (高對比亮黃)</span>
+            </div>
+          </div>
+
+          <!-- Subtitle Box Style -->
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_box_style">字幕背襯氣泡底色</label>
+            <select id="select-box-style" class="select-control">
+              <option value="none" selected data-i18n="box_style_none">無背襯 (純文字描邊)</option>
+              <option value="bubble" data-i18n="box_style_bubble">毛玻璃深色氣泡框</option>
+              <option value="solid" data-i18n="box_style_solid">純黑方塊底襯</option>
+            </select>
+          </div>
+
+          <!-- Auto Hide Delay -->
+          <div class="setting-group">
+            <label class="setting-label" data-i18n="label_auto_hide">每句字幕停留時間 (一句一清)</label>
+            <select id="select-auto-hide" class="select-control">
+              <option value="2.5" data-i18n="auto_hide_25">2.5 秒 (快速清除)</option>
+              <option value="3.5" selected data-i18n="auto_hide_35">3.5 秒 (一句一清 · 推薦)</option>
+              <option value="5" data-i18n="auto_hide_5">5 秒 (適中)</option>
+              <option value="8" data-i18n="auto_hide_8">8 秒 (較久停留)</option>
+              <option value="0" data-i18n="auto_hide_0">永不清除 (保留在畫面)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- OBS Tutorial Modal -->
+  <div id="tutorial-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title" data-i18n="tutorial_title">OBS 實況雙語字幕快速串接教學</h3>
+        <button id="btn-close-modal" class="btn-close" type="button">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <h4 style="color: #10b981; margin-bottom: 12px; font-size: 1.05rem;" data-i18n="tutorial_method1_title">
+          🎯 方式一：OBS「瀏覽器來源」(最推薦，背景自動純透明、無色差)
+        </h4>
+
+        <div class="tutorial-step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h4 data-i18n="tutorial_m1_s1_title">複製專用 Overlay 網址</h4>
+            <p><span data-i18n="tutorial_m1_s1_desc" data-i18n-html="true">點擊主畫面工具列的「<b>📋 複製 OBS 網址</b>」，或直接複製：</span><br>
+            <code id="tutorial-overlay-url">http://localhost:3000/overlay.html</code></p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h4 data-i18n="tutorial_m1_s2_title">在 OBS 中新增「瀏覽器」來源</h4>
+            <p data-i18n="tutorial_m1_s2_desc" data-i18n-html="true">打開 OBS Studio ➜ 來源視窗點「<b>+</b>」➜ 選擇「<b>瀏覽器 (Browser)</b>」➜ 名稱填寫「即時雙語字幕」。</p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h4 data-i18n="tutorial_m1_s3_title">貼上網址並設定寬高</h4>
+            <p data-i18n="tutorial_m1_s3_desc" data-i18n-html="true">在 URL 欄位貼上剛才的網址，<b>寬度設為 1920，高度設為 1080</b> (或符合您的實況畫布解析度)，然後點擊確定。</p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h4 data-i18n="tutorial_m1_s4_title">開始實況語音辨識</h4>
+            <p data-i18n="tutorial_m1_s4_desc" data-i18n-html="true">保持本 Chrome 網頁開啟，點擊右上角「<b>開始聆聽</b>」。您說話時，OBS 畫面中就會即時浮現上方原文與下方翻譯！</p>
+          </div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 24px 0;">
+
+        <h4 style="color: #38bdf8; margin-bottom: 12px; font-size: 1.05rem;" data-i18n="tutorial_method2_title">
+          🎯 方式二：OBS「視窗擷取」+「色度鍵綠幕過濾」(適合不想用伺服器的情況)
+        </h4>
+
+        <div class="tutorial-step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h4 data-i18n="tutorial_m2_s1_title">開啟綠幕全螢幕</h4>
+            <p data-i18n="tutorial_m2_s1_desc" data-i18n-html="true">在本網頁點選「<b>🟢 綠幕全螢幕</b>」按鈕，畫面將全螢幕充滿純綠幕（#00FF00）。</p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h4 data-i18n="tutorial_m2_s2_title">在 OBS 中新增「視窗擷取」</h4>
+            <p data-i18n="tutorial_m2_s2_desc" data-i18n-html="true">在 OBS 來源點「<b>+</b>」➜ 選擇「<b>視窗擷取 (Window Capture)</b>」➜ 選擇剛才開啟的 Chrome 視窗。</p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h4 data-i18n="tutorial_m2_s3_title">套用「色度鍵 (Chroma Key)」濾鏡</h4>
+            <p data-i18n="tutorial_m2_s3_desc" data-i18n-html="true">在該視窗來源上點右鍵 ➜「<b>濾鏡 (Filters)</b>」➜ 效果濾鏡點「<b>+</b>」➜ 選擇「<b>色度鍵</b>」➜ 鍵值顏色類型選「<b>綠色</b>」。綠色底會瞬間完全透明，只保留漂亮的文字！</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/i18n.js?v=20261005_v3"></script>
+  <script src="/effects.js?v=20261001"></script>
+  <script src="/app.js?v=20261005_v3"></script>
+</body>
+</html>
